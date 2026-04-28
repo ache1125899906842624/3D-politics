@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>政治思想3D診断</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        :root { --primary-color: #0055aa; --bg-color: #f0f2f5; }
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; background-color: var(--bg-color); color: #333; overflow-x: hidden; }
+        
+        header { background: #fff; padding: 15px; text-align: center; border-bottom: 1px solid #ddd; position: sticky; top: 0; z-index: 100; }
+        h1 { margin: 0; font-size: 1.1rem; }
+        
+        .container { max-width: 700px; margin: 0 auto; padding: 15px 15px 100px; }
+        h2 { font-size: 0.95rem; background: #333; color: #fff; padding: 10px 15px; border-radius: 5px; margin: 25px 0 15px; }
+        
+        .q-box { background: #fff; padding: 18px; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .q-text { font-weight: bold; display: block; margin-bottom: 15px; line-height: 1.4; font-size: 0.95rem; }
+        
+        /* スマホで押しやすい巨大ボタン */
+        .options { display: flex; gap: 5px; }
+        .options label { flex: 1; cursor: pointer; }
+        .options input { display: none; }
+        .options span { display: block; text-align: center; padding: 15px 0; background: #eee; border-radius: 8px; font-weight: bold; transition: 0.2s; font-size: 1.1rem; }
+        .options input:checked + span { background: var(--primary-color); color: #fff; }
+        
+        .scale-labels { display: flex; justify-content: space-between; font-size: 0.75rem; color: #777; margin-top: 8px; }
+
+        /* 固定フッターボタン */
+        .footer-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.95); padding: 15px; box-sizing: border-box; border-top: 1px solid #ddd; z-index: 1000; }
+        #btn-go { width: 100%; padding: 16px; background: var(--primary-color); color: #fff; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+
+        /* 結果表示 */
+        #page-result { display: none; width: 100vw; height: 100vh; background: #fff; position: fixed; top: 0; left: 0; z-index: 2000; }
+        #myDiv { width: 100%; height: 100%; }
+        
+        #rank-display { position: absolute; top: 15px; left: 15px; right: 15px; max-width: 250px; z-index: 2100; background: rgba(255,255,255,0.9); padding: 12px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); pointer-events: none; }
+        .rank-item { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px; }
+        .party-color { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; }
+        
+        #btn-back { position: absolute; bottom: 30px; right: 20px; z-index: 2100; padding: 12px 25px; background: #333; color: #fff; border: none; border-radius: 30px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="page-questions">
+    <header><h1>政治思想3D診断</h1></header>
+    <div class="container">
+        <div id="questions-container"></div>
+        <div class="footer-nav">
+            <button id="btn-go">結果を3Dキューブで見る</button>
+        </div>
+    </div>
+</div>
+
+<div id="page-result">
+    <div id="rank-display">
+        <strong style="border-bottom:1px solid #eee; display:block; margin-bottom:8px; padding-bottom:4px; font-size:0.85rem;">一致度が高い政党</strong>
+        <div id="rank-list"></div>
+    </div>
+    <div id="myDiv"></div>
+    <button id="btn-back">やり直す</button>
+</div>
+
+<script>
+// 政党・質問データ
+const DIAG_DATA = {
+    categories: [
+        { title: "1. 経済（左：平等 ←→ 右：自由）", axis: "x", questions: [
+            { id: "x1", text: "消費税の減税や富裕層への課税強化を行うべきだ。", reverse: true },
+            { id: "x2", text: "規制緩和を進め、市場での競争を促進すべきだ。", reverse: false },
+            { id: "x3", text: "政府は積極的な財政出動を行うべきだ。", reverse: true },
+            { id: "x4", text: "最低賃金を大幅に引き上げるべきだ。", reverse: true },
+            { id: "x5", text: "原発の再稼働を進めるべきだ。", reverse: false }
+        ]},
+        { title: "2. 社会（前：個人 ←→ 後：全体）", axis: "y", questions: [
+            { id: "y1", text: "選択的夫婦別姓を認めるべきだ。", reverse: true },
+            { id: "y2", text: "女系天皇の即位を認めるべきだ。", reverse: true },
+            { id: "y3", text: "自衛隊を憲法に明記すべきだ。", reverse: false },
+            { id: "y4", text: "同性婚を法的に認めるべきだ。", reverse: true },
+            { id: "y5", text: "秩序維持や治安を優先すべきだ。", reverse: false }
+        ]},
+        { title: "3. 境界（下：国内 ←→ 上：国際）", axis: "z", questions: [
+            { id: "z1", text: "防衛予算を増額すべきだ。", reverse: false },
+            { id: "z2", text: "外国人労働者の受け入れを拡大すべきだ。", reverse: true },
+            { id: "z3", text: "外資による土地取得を規制すべきだ。", reverse: false },
+            { id: "z4", text: "国際社会の利益を優先すべき時がある。", reverse: true },
+            { id: "z5", text: "スパイ防止法を制定すべきだ。", reverse: false }
+        ]}
+    ],
+    parties: [
+        { name: '自民党', x: 2.5, y: 3.0, z: -2.0, color: '#0055aa' },
+        { name: '立憲民主', x: -3.0, y: -4.0, z: 3.5, color: '#00aaff' },
+        { name: '日本維新', x: 4.5, y: -2.5, z: -2.0, color: '#22cc22' },
+        { name: '日本保守党', x: 4.8, y: 5.0, z: -5.0, color: '#aa0000' },
+        { name: '参政党', x: 2.0, y: 4.5, z: -5.0, color: '#ff8800' },
+        { name: '国民民主', x: 2.0, y: -1.0, z: -1.5, color: '#ffcc00' },
+        { name: '共産党', x: -4.8, y: -4.5, z: 4.5, color: '#ee0000' },
+        { name: '公明党', x: -1.0, y: 1.0, z: 1.0, color: '#ff66ff' },
+        { name: '中道改革', x: 1.0, y: -1.0, z: 0.0, color: '#008080' },
+        { name: 'れいわ', x: -5.0, y: -4.0, z: -2.0, color: '#ff0055' },
+        { name: '社民党', x: -4.5, y: -5.0, z: 4.0, color: '#33ccff' },
+        { name: 'チームみらい', x: 0.0, y: -2.0, z: 2.0, color: '#99cc00' }
+    ]
+};
+
+// 質問の生成
+const qWrap = document.getElementById('questions-container');
+DIAG_DATA.categories.forEach(function(cat) {
+    const h2 = document.createElement('h2');
+    h2.textContent = cat.title;
+    qWrap.appendChild(h2);
+    
+    cat.questions.forEach(function(q) {
+        const div = document.createElement('div');
+        div.className = 'q-box';
+        div.innerHTML = '<span class="q-text">' + q.text + '</span>' +
+            '<div class="options">' +
+                '<label><input type="radio" name="'+q.id+'" value="1"><span>1</span></label>' +
+                '<label><input type="radio" name="'+q.id+'" value="2"><span>2</span></label>' +
+                '<label><input type="radio" name="'+q.id+'" value="3" checked><span>3</span></label>' +
+                '<label><input type="radio" name="'+q.id+'" value="4"><span>4</span></label>' +
+                '<label><input type="radio" name="'+q.id+'" value="5"><span>5</span></label>' +
+            '</div>' +
+            '<div class="scale-labels"><span>反対</span><span>賛成</span></div>';
+        qWrap.appendChild(div);
+    });
+});
+
+// 診断実行
+document.getElementById('btn-go').onclick = function() {
+    function getVal(axis) {
+        let sum = 0, count = 0;
+        DIAG_DATA.categories.forEach(function(cat) {
+            cat.questions.forEach(function(q) {
+                if(q.id.indexOf(axis) === 0) {
+                    const el = document.querySelector('input[name="'+q.id+'"]:checked');
+                    let v = (parseInt(el.value) - 3) * 2.5;
+                    if(q.reverse) v = -v;
+                    sum += v;
+                    count++;
+                }
+            });
+        });
+        return sum / count;
+    }
+
+    const ux = getVal('x'), uy = getVal('y'), uz = getVal('z');
+
+    // 一致度計算
+    let scores = DIAG_DATA.parties.map(function(p) {
+        const dist = Math.sqrt(Math.pow(ux-p.x, 2) + Math.pow(uy-p.y, 2) + Math.pow(uz-p.z, 2));
+        const match = Math.round(Math.max(0, 100 - (dist/17.32*100)));
+        return { name: p.name, color: p.color, match: match };
+    }).sort(function(a,b){ return b.match - a.match; });
+
+    document.getElementById('rank-list').innerHTML = scores.slice(0,3).map(function(s) {
+        return '<div class="rank-item"><span><span class="party-color" style="background:'+s.color+'"></span>'+s.name+'</span><b>'+s.match+'%</b></div>';
+    }).join('');
+
+    document.getElementById('page-questions').style.display = 'none';
+    document.getElementById('page-result').style.display = 'block';
+
+    // 描画
+    const traces = [
+        { 
+            x: DIAG_DATA.parties.map(p=>p.x), y: DIAG_DATA.parties.map(p=>p.y), z: DIAG_DATA.parties.map(p=>p.z), 
+            text: DIAG_DATA.parties.map(p=>p.name), mode: 'markers+text', type: 'scatter3d', 
+            marker: { size: 5, color: DIAG_DATA.parties.map(p=>p.color) },
+            textposition: 'top center', textfont: {size: 10}
+        },
+        { 
+            x: [ux], y: [uy], z: [uz], text: ['あなた'], mode: 'markers+text', type: 'scatter3d', 
+            marker: { size: 10, color: 'black', symbol: 'diamond' },
+            textposition: 'top center', textfont: {size: 12, color: 'black'}
+        }
+    ];
+
+    // 立方体枠線
+    const c = [[-5,-5,-5],[5,-5,-5],[5,5,-5],[-5,5,-5],[-5,-5,-5],[-5,-5,5],[5,-5,5],[5,5,5],[-5,5,5],[-5,-5,5],NaN,NaN,NaN,[5,-5,-5],[5,-5,5],NaN,NaN,NaN,[5,5,-5],[5,5,5],NaN,NaN,NaN,[-5,5,-5],[-5,5,5]];
+    traces.push({ x: c.map(p=>p[0]), y: c.map(p=>p[1]), z: c.map(p=>p[2]), mode: 'lines', type: 'scatter3d', line: {color:'#ccc', width:1}, hoverinfo:'none' });
+    
+    // 中心軸
+    traces.push({ x: [-5, 5, NaN, 0, 0, NaN, 0, 0], y: [0, 0, NaN, -5, 5, NaN, 0, 0], z: [0, 0, NaN, 0, 0, NaN, -5, 5], mode: 'lines', type: 'scatter3d', line: { color: '#888', width: 1.5 }, hoverinfo: 'none' });
+
+    // 軸ラベル（右・左を反転せず、x=5.5を「左」にする指定を維持）
+    traces.push({ 
+        x: [5.5,-5.5,0,0,0,0], y: [0,0,5.5,-5.5,0,0], z: [0,0,0,0,5.5,-5.5], 
+        text: ['左','右','後','前','上','下'], mode: 'text', type: 'scatter3d', textfont: {size:13} 
+    });
+
+    Plotly.newPlot('myDiv', traces, {
+        scene: { 
+            xaxis: {range:[-6,6], visible:false}, 
+            yaxis: {range:[-6,6], visible:false}, 
+            zaxis: {range:[-6,6], visible:false},
+            camera: {eye: {x: 1.5, y: 1.5, z: 1.1}},
+            aspectmode: 'cube'
+        },
+        margin: {l:0,r:0,b:0,t:0}, showlegend: false
+    }, {responsive: true, displayModeBar: false});
+};
+
+document.getElementById('btn-back').onclick = function() {
+    document.getElementById('page-questions').style.display = 'block';
+    document.getElementById('page-result').style.display = 'none';
+};
+</script>
+</body>
+</html>
